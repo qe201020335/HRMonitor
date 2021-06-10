@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Enumeration;
 using System.Timers;
+using Windows.Devices.Bluetooth.GenericAttributeProfile;
 
 namespace HeartRateMonitor
 {
@@ -16,12 +17,11 @@ namespace HeartRateMonitor
         private Timer timer;
         private string devName;  // Polar H10 7B3C0520
         private bool finished_searching = false;
-        private List<Task> tasks = new List<Task>();
 
         public static async Task Main(string[] args)
         {
             var program = new Program();
-            await program.main();
+            await program.search_entry();
         }
 
         private Program()
@@ -30,7 +30,7 @@ namespace HeartRateMonitor
             devName = Console.ReadLine();
         }
 
-        private async Task main()
+        private async Task search_entry()
         {
             string[] requestedProperties = { "System.Devices.Aep.DeviceAddress", "System.Devices.Aep.IsConnected", "System.Devices.Aep.Bluetooth.Le.IsConnectable" };
             
@@ -47,29 +47,27 @@ namespace HeartRateMonitor
             deviceWatcher.Stopped += DeviceWatcherStopped;
             
             deviceWatcher.Start();
-            timer = new Timer(5000);
-            
-
-            StopWatcher();
-            
-            
-        }
-
-        private void OnTimerExpired(Object sender, ElapsedEventArgs e)
-        {
-            if (sender != timer)
+            await Task.Delay(5000);
+            if (!finished_searching)
             {
-                return;
+                StopWatcher();
             }
-            
+            if (ble_info == null)
+            {
+                Console.WriteLine("Device Not Found");
+            }
+            DeviceGot();
         }
-
+        
         private async void DeviceGot()
         {
             ble = await BluetoothLEDevice.FromIdAsync(ble_info.Id);
-            Console.WriteLine(ble.GattServices);
-            
-            
+
+            foreach (GattDeviceService service in ble.GattServices)
+            {
+                Console.WriteLine(service.Uuid);
+            }
+
             Console.WriteLine("Done");
         }
 
@@ -80,6 +78,7 @@ namespace HeartRateMonitor
             Console.WriteLine(deviceInfo.Name);
             ble_info = deviceInfo;
             StopWatcher();
+            finished_searching = true;
         }
         
         private void DeviceUpdated(DeviceWatcher sender, DeviceInformationUpdate deviceInfoUpdate)
@@ -110,7 +109,7 @@ namespace HeartRateMonitor
             deviceWatcher.Added -= DeviceAdded;
             deviceWatcher.Removed -= DeviceRemoved;
             deviceWatcher.Updated -= DeviceUpdated;
-            deviceWatcher.EnumerationCompleted += DeviceEnumerationCompleted;
+            deviceWatcher.EnumerationCompleted -= DeviceEnumerationCompleted;
             deviceWatcher.Stopped -= DeviceWatcherStopped;
             deviceWatcher.Stop();
         }
