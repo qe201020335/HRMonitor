@@ -1,10 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Enumeration;
-using System.Timers;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;
+using Timer = System.Timers.Timer;
 
 namespace HeartRateMonitor
 {
@@ -17,11 +18,20 @@ namespace HeartRateMonitor
         private Timer timer;
         private string devName;  // Polar H10 7B3C0520
         private bool finished_searching = false;
+        private TaskCompletionSource<bool> connected = new TaskCompletionSource<bool>();
 
         public static async Task Main(string[] args)
         {
             var program = new Program();
-            await program.search_entry();
+            bool found = await program.search_entry();
+            if (!found)
+            {
+                Console.WriteLine("Device Not Found");
+                return;
+            }
+            program.Connect();
+            Task.WaitAll(program.connected.Task);
+            Console.WriteLine("Done");
         }
 
         private Program()
@@ -30,7 +40,7 @@ namespace HeartRateMonitor
             devName = Console.ReadLine();
         }
 
-        private async Task search_entry()
+        private async Task<bool> search_entry()
         {
             string[] requestedProperties = { "System.Devices.Aep.DeviceAddress", "System.Devices.Aep.IsConnected", "System.Devices.Aep.Bluetooth.Le.IsConnectable" };
             
@@ -51,24 +61,29 @@ namespace HeartRateMonitor
             if (!finished_searching)
             {
                 StopWatcher();
+                finished_searching = true;
             }
             if (ble_info == null)
             {
-                Console.WriteLine("Device Not Found");
+                return false;
             }
-            DeviceGot();
+            return true;
         }
         
-        private async void DeviceGot()
+        private async void Connect()
         {
             ble = await BluetoothLEDevice.FromIdAsync(ble_info.Id);
+            
+            Console.WriteLine(ble.GattServices.Count);
 
             foreach (GattDeviceService service in ble.GattServices)
             {
                 Console.WriteLine(service.Uuid);
             }
-
-            Console.WriteLine("Done");
+            Console.WriteLine("Connected");
+            Console.Out.Flush();
+            connected.TrySetResult(true);
+            
         }
 
         private void DeviceAdded(DeviceWatcher sender, DeviceInformation deviceInfo)
